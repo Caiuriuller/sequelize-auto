@@ -46,8 +46,8 @@ export class AutoWriter {
     });
 
     const isTypeScript = this.options.lang === 'ts';
-    const assoc = this.createAssociations(isTypeScript);
-
+    const assoc = ''
+    //this.createAssociations(isTypeScript);
     // get table names without schema
     // TODO: add schema to model and file names when schema is non-default for the dialect
     const tableNames = tables.map(t => {
@@ -101,17 +101,17 @@ export class AutoWriter {
     rels.forEach(rel => {
       if (rel.isM2M) {
         const asprop = recase(this.options.caseProp, pluralize(rel.childProp));
-        strBelongsToMany += `  ${rel.parentModel}.belongsToMany(${rel.childModel}, { as: '${asprop}', through: ${rel.joinModel}, foreignKey: "${rel.parentId}", otherKey: "${rel.childId}" });\n`;
+        strBelongsToMany += `  ${rel.parentModel}.belongsToMany(${rel.childModel}, { as: '${rel.childModel}', through: ${rel.joinModel}, foreignKey: "${rel.parentId}", otherKey: "${rel.childId}" });\n`;
       } else {
         // const bAlias = (this.options.noAlias && rel.parentModel.toLowerCase() === rel.parentProp.toLowerCase()) ? '' : `as: "${rel.parentProp}", `;
         const asParentProp = recase(this.options.caseProp, rel.parentProp);
-        const bAlias = this.options.noAlias ? '' : `as: "${asParentProp}", `;
+        const bAlias = this.options.noAlias ? '' : `as: "${rel.parentModel}", `;
         strBelongs += `  ${rel.childModel}.belongsTo(${rel.parentModel}, { ${bAlias}foreignKey: "${rel.parentId}"});\n`;
 
         const hasRel = rel.isOne ? "hasOne" : "hasMany";
         // const hAlias = (this.options.noAlias && Utils.pluralize(rel.childModel.toLowerCase()) === rel.childProp.toLowerCase()) ? '' : `as: "${rel.childProp}", `;
         const asChildProp = recase(this.options.caseProp, rel.childProp);
-        const hAlias = this.options.noAlias ? '' : `as: "${asChildProp}", `;
+        const hAlias = this.options.noAlias ? '' : `as: "${rel.childModel}", `;
         strBelongs += `  ${rel.parentModel}.${hasRel}(${rel.childModel}, { ${hAlias}foreignKey: "${rel.parentId}"});\n`;
       }
     });

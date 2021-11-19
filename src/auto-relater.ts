@@ -107,7 +107,7 @@ export class AutoRelater {
     if (name === fkFieldName || isM2M) {
       name = fkFieldName + "_" + modelName;
     }
-    
+
     // singularize in case one column name is the singularized form of another column in the same model
     let singleName = singularize(name);
     if (isM2M) {

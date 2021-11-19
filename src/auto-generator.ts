@@ -51,37 +51,14 @@ export class AutoGenerator {
     let header = "";
     const sp = this.space[1];
 
-    if (this.options.lang === 'ts') {
-      header += "import * as Sequelize from 'sequelize';\n";
-      header += "import { DataTypes, Model, Optional } from 'sequelize';\n";
-    } else if (this.options.lang === 'es6') {
-      header += "const Sequelize = require('sequelize');\n";
-      header += "module.exports = (sequelize, DataTypes) => {\n";
-      header += sp + "return #TABLE#.init(sequelize, DataTypes);\n";
-      header += "}\n\n";
-      header += "class #TABLE# extends Sequelize.Model {\n";
-      header += sp + "static init(sequelize, DataTypes) {\n";
-      if (this.options.useDefine) {
-        header += sp + "return sequelize.define('#TABLE#', {\n";
-      } else {
-        header += sp + "return super.init({\n";
-      }
-    } else if (this.options.lang === 'esm') {
-      header += "import _sequelize from 'sequelize';\n";
-      header += "const { Model, Sequelize } = _sequelize;\n\n";
-      if (this.options.useDefine) {
-        header += "export default function(sequelize, DataTypes) {\n";
-        header += sp + "return sequelize.define('#TABLE#', {\n";
-      } else {
-        header += "export default class #TABLE# extends Model {\n";
-        header += sp + "static init(sequelize, DataTypes) {\n";
-        header += sp + "return super.init({\n";
-      }
-    } else {
-      header += "const Sequelize = require('sequelize');\n";
-      header += "module.exports = function(sequelize, DataTypes) {\n";
-      header += sp + "return sequelize.define('#TABLE#', {\n";
-    }
+    header += "const { Model, DataTypes } = require('sequelize');\n"
+
+    header += "class #TABLE# extends Model {\n";
+    header += sp + "static init(sequelize) {\n";
+    header += sp + sp + "return super.init(\n"
+    header += sp + sp + "{\n"
+
+
     return header;
   }
 
@@ -96,50 +73,6 @@ export class AutoGenerator {
       const [schemaName, tableNameOrig] = qNameSplit(table);
       const tableName = recase(this.options.caseModel, tableNameOrig, this.options.singularize);
 
-      if (this.options.lang === 'ts') {
-        const associations = this.addTypeScriptAssociationMixins(table);
-        const needed = _.keys(associations.needed).sort();
-        needed.forEach(fkTable => {
-          const set = associations.needed[fkTable];
-          const [fkSchema, fkTableName] = qNameSplit(fkTable);
-          const filename = recase(this.options.caseFile, fkTableName, this.options.singularize);
-          str += 'import type { ';
-          str += Array.from(set.values()).sort().join(', ');
-          str += ` } from './${filename}';\n`;
-        });
-
-        str += "\nexport interface #TABLE#Attributes {\n";
-        str += this.addTypeScriptFields(table, true) + "}\n\n";
-
-        const primaryKeys = this.getTypeScriptPrimaryKeys(table);
-
-        if (primaryKeys.length) {
-          str += `export type #TABLE#Pk = ${primaryKeys.map((k) => `"${recase(this.options.caseProp, k)}"`).join(' | ')};\n`;
-          str += `export type #TABLE#Id = #TABLE#[#TABLE#Pk];\n`;
-        }
-
-        const creationOptionalFields = this.getTypeScriptCreationOptionalFields(table);
-
-        if (creationOptionalFields.length) {
-          str += `export type #TABLE#OptionalAttributes = ${creationOptionalFields.map((k) => `"${recase(this.options.caseProp, k)}"`).join(' | ')};\n`;
-          str += "export type #TABLE#CreationAttributes = Optional<#TABLE#Attributes, #TABLE#OptionalAttributes>;\n\n";
-        } else {
-          str += "export type #TABLE#CreationAttributes = #TABLE#Attributes;\n\n";
-        }
-
-        str += "export class #TABLE# extends Model<#TABLE#Attributes, #TABLE#CreationAttributes> implements #TABLE#Attributes {\n";
-        str += this.addTypeScriptFields(table, false);
-        str += "\n" + associations.str;
-        str += "\n" + this.space[1] + "static initModel(sequelize: Sequelize.Sequelize): typeof #TABLE# {\n";
-
-        if (this.options.useDefine) {
-          str += this.space[2] + "return sequelize.define('#TABLE#',{\n";
-
-        } else {
-          str += this.space[2] + "return #TABLE#.init({\n";
-        }
-      }
-
       str += this.addTable(table);
 
       const lang = this.options.lang;
@@ -151,10 +84,34 @@ export class AutoGenerator {
 
       if (lang === 'es6' || lang === 'esm' || lang === 'ts') {
         if (this.options.useDefine) {
-          str += this.space[1] + "}\n}\n";
+          str += this.space[1] + "}\n";
+
+          /** Add relation */
+          const relation = this.createAssociations(false, tableName)
+          if (relation) {
+            str += this.space[1] + "static associate(models) {\n"
+            str += this.space[2] +  `${relation}`
+            str += this.space[1] + "}\n"
+          }
+
+          str += this.space[1] + "}\n";
+
+          str += this.space[1] + "module.exports = #TABLE#\n";
         } else {
-          // str += this.space[1] + "return #TABLE#;\n";
-          str += this.space[1] + "}\n}\n";
+          str += this.space[1] + "}\n";
+
+          /** Add relation */
+          const relation = this.createAssociations(false, tableName)
+
+          if (relation) {
+            str += this.space[1] + "static associate(models) {\n"
+            str += this.space[2] +  `${relation}`
+            str += this.space[1] + "}\n"
+          }
+
+          str += "}\n";
+
+          str += "module.exports = #TABLE#\n";
         }
       } else {
         str += "};\n";
@@ -192,23 +149,25 @@ export class AutoGenerator {
     str = str.substring(0, str.length - 2) + "\n";
 
     // add the table options
-    str += space[1] + "}, {\n";
+    str += space[2] + "},\n";
+    str += space[2] + "{ \n"
+
     if (!this.options.useDefine) {
-      str += space[2] + "sequelize,\n";
+      str += space[3] + "sequelize,\n";
     }
-    str += space[2] + "tableName: '" + tableNameOrig + "',\n";
+    str += space[3] + "tableName: '" + tableNameOrig + "',\n";
 
     if (schemaName && this.dialect.hasSchema) {
-      str += space[2] + "schema: '" + schemaName + "',\n";
+      str += space[3] + "schema: '" + schemaName + "',\n";
     }
 
     if (this.hasTriggerTables[table]) {
-      str += space[2] + "hasTrigger: true,\n";
+      str += space[3] + "hasTrigger: true,\n";
     }
 
-    str += space[2] + "timestamps: " + timestamps + ",\n";
+    str += space[3] + "timestamps: " + timestamps + ",\n";
     if (paranoid) {
-      str += space[2] + "paranoid: true,\n";
+      str += space[3] + "paranoid: true,\n";
     }
 
     // conditionally add additional options
@@ -217,10 +176,10 @@ export class AutoGenerator {
       _.each(this.options.additional, (value, key) => {
         if (key === 'name') {
           // name: true - preserve table name always
-          str += space[2] + "name: {\n";
-          str += space[3] + "singular: '" + table + "',\n";
-          str += space[3] + "plural: '" + table + "'\n";
-          str += space[2] + "},\n";
+          str += space[3] + "name: {\n";
+          str += space[4] + "singular: '" + table + "',\n";
+          str += space[4] + "plural: '" + table + "'\n";
+          str += space[3] + "},\n";
         } else if (key === "timestamps" || key === "paranoid") {
           // handled above
         } else {
@@ -231,13 +190,46 @@ export class AutoGenerator {
     }
 
     // add indexes
-    str += this.addIndexes(table);
+    //str += this.addIndexes(table);
 
-    str = space[2] + str.trim();
+    str = space[3] + str.trim();
     str = str.substring(0, str.length - 1);
-    str += "\n" + space[1] + "}";
+    str += "\n" + space[2] + "}";
 
     return str;
+  }
+
+  private createAssociations(typeScript: boolean, tableName: string) {
+    let strBelongs = "";
+    let strBelongsToMany = "";
+
+    const rels = this.relations.filter(a => a.childModel === tableName)
+
+    rels.forEach(rel => {
+
+      let as = null
+
+      if (["ClienteContato"].includes(rel.parentModel)) {
+        return
+      }
+
+      if (["Usuario", "Cliente", "Segmento", "EmpresaRepresentante", "PessoaContato", "PedidoProduto"].includes(rel.parentModel)) {
+        as = rel.parentId.split('_').filter(r => r != "id").map(r => recase(this.options.caseModel, r)).join()
+      }
+
+      if (rel.isM2M) {
+        const asprop = recase(this.options.caseProp, pluralize(rel.childProp));
+        strBelongsToMany += `  this.belongsToMany(models.${rel.childModel}, { as: '${as || rel.childModel}', through: models.${rel.joinModel}, foreignKey: "${rel.parentId}", otherKey: "${rel.childId}" });\n`;
+      } else {
+
+        const asParentProp = recase(this.options.caseProp, rel.parentProp);
+        const bAlias = `as: "${as || rel.parentModel}", `;
+        strBelongs += `  this.belongsTo(models.${rel.parentModel}, { ${bAlias}foreignKey: "${rel.parentId}"});\n`;
+      }
+    });
+
+    // belongsToMany must come first
+    return strBelongsToMany + strBelongs;
   }
 
   // Create a string containing field attributes (type, defaultValue, etc.)
@@ -284,21 +276,21 @@ export class AutoGenerator {
       }
 
       if (isSerialKey && !wroteAutoIncrement) {
-        str += space[3] + "autoIncrement: true,\n";
+        str += space[4] + "autoIncrement: true,\n";
         // Resort to Postgres' GENERATED BY DEFAULT AS IDENTITY instead of SERIAL
         if (this.dialect.name === "postgres" && fieldObj.foreignKey && fieldObj.foreignKey.isPrimaryKey === true &&
           (fieldObj.foreignKey.generation === "ALWAYS" || fieldObj.foreignKey.generation === "BY DEFAULT")) {
-          str += space[3] + "autoIncrementIdentity: true,\n";
+          str += space[4] + "autoIncrementIdentity: true,\n";
         }
         wroteAutoIncrement = true;
       }
 
       if (attr === "foreignKey") {
         if (foreignKey && foreignKey.isForeignKey) {
-          str += space[3] + "references: {\n";
-          str += space[4] + "model: \'" + fieldObj[attr].foreignSources.target_table + "\',\n";
-          str += space[4] + "key: \'" + fieldObj[attr].foreignSources.target_column + "\'\n";
-          str += space[3] + "}";
+          str += space[4] + "references: {\n";
+          str += space[5] + "model: \'" + fieldObj[attr].foreignSources.target_table + "\',\n";
+          str += space[5] + "key: \'" + fieldObj[attr].foreignSources.target_column + "\'\n";
+          str += space[4] + "}";
         } else {
           return true;
         }
@@ -307,22 +299,22 @@ export class AutoGenerator {
         return true;
       } else if (attr === "primaryKey") {
         if (fieldObj[attr] === true && (!_.has(fieldObj, 'foreignKey') || !!fieldObj.foreignKey.isPrimaryKey)) {
-          str += space[3] + "primaryKey: true";
+          str += space[4] + "primaryKey: true";
         } else {
           return true;
         }
       } else if (attr === "autoIncrement") {
         if (fieldObj[attr] === true && !wroteAutoIncrement) {
-          str += space[3] + "autoIncrement: true,\n";
+          str += space[4] + "autoIncrement: true,\n";
           // Resort to Postgres' GENERATED BY DEFAULT AS IDENTITY instead of SERIAL
           if (this.dialect.name === "postgres" && fieldObj.foreignKey && fieldObj.foreignKey.isPrimaryKey === true && (fieldObj.foreignKey.generation === "ALWAYS" || fieldObj.foreignKey.generation === "BY DEFAULT")) {
-            str += space[3] + "autoIncrementIdentity: true,\n";
+            str += space[4] + "autoIncrementIdentity: true,\n";
           }
           wroteAutoIncrement = true;
         }
         return true;
       } else if (attr === "allowNull") {
-        str += space[3] + attr + ": " + fieldObj[attr];
+        str += space[4] + attr + ": " + fieldObj[attr];
       } else if (attr === "defaultValue") {
         let defaultVal = fieldObj.defaultValue;
         if (this.dialect.name === "mssql" && defaultVal && defaultVal.toLowerCase() === '(newid())') {
@@ -371,12 +363,12 @@ export class AutoGenerator {
 
           } else if (defaultVal.match(/\w+\(\)$/)) {
             // replace db function with sequelize function
-            val_text = "Sequelize.Sequelize.fn('" + defaultVal.replace(/\(\)$/g, "") + "')";
+            val_text = "sequelize.fn('" + defaultVal.replace(/\(\)$/g, "") + "')";
 
           } else if (this.isNumber(field_type)) {
             if (defaultVal.match(/\(\)/g)) {
               // assume it's a server function if it contains parens
-              val_text = "Sequelize.Sequelize.literal('" + defaultVal + "')";
+              val_text = "sequelize.literal('" + defaultVal + "')";
             } else {
               // don't quote numbers
               val_text = defaultVal;
@@ -384,11 +376,11 @@ export class AutoGenerator {
 
           } else if (defaultVal.match(/\(\)/g)) {
             // embedded function, pass as literal
-            val_text = "Sequelize.Sequelize.literal('" + defaultVal + "')";
+            val_text = "sequelize.literal('" + defaultVal + "')";
 
           } else if (field_type.indexOf('date') === 0 || field_type.indexOf('timestamp') === 0) {
             if (_.includes(['current_timestamp', 'current_date', 'current_time', 'localtime', 'localtimestamp'], defaultVal.toLowerCase())) {
-              val_text = "Sequelize.Sequelize.literal('" + defaultVal + "')";
+              val_text = "sequelize.literal('" + defaultVal + "')";
             } else {
               val_text = quoteWrapper + defaultVal + quoteWrapper;
             }
@@ -404,7 +396,7 @@ export class AutoGenerator {
         // don't prepend N for MSSQL when building models...
         // defaultVal = _.trimStart(defaultVal, 'N');
 
-        str += space[3] + attr + ": " + val_text;
+        str += space[4] + attr + ": " + val_text;
 
       } else if (attr === "comment" && !fieldObj[attr]) {
         return true;
@@ -414,7 +406,7 @@ export class AutoGenerator {
           val = (fieldObj as any)[attr];
           val = _.isString(val) ? quoteWrapper + this.escapeSpecial(val) + quoteWrapper : val;
         }
-        str += space[3] + attr + ": " + val;
+        str += space[4] + attr + ": " + val;
       }
 
       str += ",\n";
@@ -422,20 +414,20 @@ export class AutoGenerator {
 
     if (unique) {
       const uniq = _.isString(unique) ? quoteWrapper + unique.replace(/\"/g, '\\"') + quoteWrapper : unique;
-      str += space[3] + "unique: " + uniq + ",\n";
+      str += space[4] + "unique: " + uniq + ",\n";
     }
 
     if (field !== fieldName) {
       // write the original fieldname, unless it is a key and the column names are case-insensitive
       // because Sequelize may request the same column twice in a join condition otherwise.
       if (!fieldObj.primaryKey || this.dialect.canAliasPK || field.toUpperCase() !== fieldName.toUpperCase()) {
-        str += space[3] + "field: '" + field + "',\n";
+        str += space[4] + "field: '" + field + "',\n";
       }
     }
 
     // removes the last `,` within the attribute options
     str = str.trim().replace(/,+$/, '') + "\n";
-    str = space[2] + str + space[2] + "},\n";
+    str = space[3] + str + space[3] + "},\n";
     return str;
   }
 
