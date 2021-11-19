@@ -1,8 +1,8 @@
 
-import _ from "lodash";
+import _, { reduce } from "lodash";
 import { AutoOptions } from ".";
 import { FKSpec } from "./dialects/dialect-options";
-import { CaseOption, qNameJoin, qNameSplit, recase, Relation, TableData, singularize, pluralize } from "./types";
+import { CaseOption, qNameJoin, qNameSplit, recase, Relation, TableData, singularize, pluralize, RelationTable } from "./types";
 
 /** Constructs entity relationships from TableData.foreignKeys and populates TableData.relations */
 export class AutoRelater {
@@ -10,7 +10,7 @@ export class AutoRelater {
   caseProp: CaseOption;
   singularize: boolean;
   pkSuffixes: string[];
-
+  relationTable: RelationTable[];
   relations: Relation[];
   private usedChildNames: Set<string>;
 
@@ -19,6 +19,7 @@ export class AutoRelater {
     this.caseProp = options.caseProp || 'o';
     this.singularize = options.singularize;
     this.pkSuffixes = options.pkSuffixes || [];
+    this.relationTable = []
 
     if (!this.pkSuffixes || this.pkSuffixes.length == 0){
       this.pkSuffixes = ["id"];
@@ -31,24 +32,34 @@ export class AutoRelater {
   /** Create Relations from the foreign keys, and add to TableData */
   buildRelations(td: TableData) {
 
+    let r : Relation[] = []
+
     const fkTables = _.keys(td.foreignKeys).sort();
     fkTables.forEach(t => {
+      r = []
       const fkFields = td.foreignKeys[t];
       const fkFieldNames = _.keys(fkFields);
       fkFieldNames.forEach(fkFieldName => {
         const spec = fkFields[fkFieldName];
         if (spec.isForeignKey) {
-          this.addRelation(t, fkFieldName, spec, fkFields);
+          r.push(this.addRelation(t, fkFieldName, spec, fkFields));
         }
       });
+      this.relationTable.push({
+        table: t,
+        relations: r
+      })
     });
 
     td.relations = _.sortBy(this.relations, ['parentTable', 'childTable']);
+    td.relationTable = this.relationTable
     return td;
   }
 
   /** Create a Relation object for the given foreign key */
-  private addRelation(table: string, fkFieldName: string, spec: FKSpec, fkFields: { [fieldName: string]: FKSpec; }) {
+  private addRelation(table: string, fkFieldName: string, spec: FKSpec, fkFields: { [fieldName: string]: FKSpec; }) : Relation {
+
+
 
     const [schemaName, tableName] = qNameSplit(table);
     const schema = schemaName as string;
@@ -75,6 +86,18 @@ export class AutoRelater {
       isM2M: false
     });
 
+    const r : Relation =  {
+      parentId: sourceProp,
+      parentModel: targetModel,
+      parentProp: alias,
+      parentTable: qNameJoin(spec.foreignSources.target_schema || schema, spec.foreignSources.target_table),
+      childModel: modelName,
+      childProp: isOne ? singularize(childAlias) : pluralize(childAlias),
+      childTable: qNameJoin(spec.foreignSources.source_schema || schema, spec.foreignSources.source_table),
+      isOne: isOne,
+      isM2M: false
+    }
+
     if (spec.isPrimaryKey) {
       // if FK is also part of the PK, see if there is a "many-to-many" junction
       const otherKeys = _.filter(fkFields, k => k.isForeignKey && k.isPrimaryKey && k.source_column !== fkFieldName);
@@ -99,6 +122,8 @@ export class AutoRelater {
         });
       }
     }
+
+    return r
   }
 
   /** Convert foreign key name into alias name for belongsTo relations */

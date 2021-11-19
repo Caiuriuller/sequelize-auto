@@ -1,7 +1,7 @@
 import _ from "lodash";
 import { ColumnDescription } from "sequelize/types";
 import { DialectOptions, FKSpec } from "./dialects/dialect-options";
-import { AutoOptions, CaseFileOption, CaseOption, Field, IndexSpec, LangOption, pluralize, qNameJoin, qNameSplit, recase, Relation, singularize, TableData, TSField } from "./types";
+import { AutoOptions, CaseFileOption, CaseOption, Field, IndexSpec, LangOption, pluralize, qNameJoin, qNameSplit, recase, Relation, RelationTable, singularize, TableData, TSField } from "./types";
 
 /** Generates text from each table in TableData */
 export class AutoGenerator {
@@ -11,6 +11,7 @@ export class AutoGenerator {
   hasTriggerTables: { [tableName: string]: boolean; };
   indexes: { [tableName: string]: IndexSpec[]; };
   relations: Relation[];
+  relationTable: RelationTable[];
   space: string[];
   options: {
     indentation?: number;
@@ -32,6 +33,7 @@ export class AutoGenerator {
     this.hasTriggerTables = tableData.hasTriggerTables;
     this.indexes = tableData.indexes;
     this.relations = tableData.relations;
+    this.relationTable = tableData.relationTable;
     this.dialect = dialect;
     this.options = options;
     this.options.lang = this.options.lang || 'es5';
@@ -74,7 +76,6 @@ export class AutoGenerator {
       const tableName = recase(this.options.caseModel, tableNameOrig, this.options.singularize);
 
       str += this.addTable(table);
-
       const lang = this.options.lang;
       if (lang === 'ts' && this.options.useDefine) {
         str += ") as typeof #TABLE#;\n";
@@ -87,7 +88,7 @@ export class AutoGenerator {
           str += this.space[1] + "}\n";
 
           /** Add relation */
-          const relation = this.createAssociations(false, tableName)
+          const relation = this.createAssociations(table)
           if (relation) {
             str += this.space[1] + "static associate(models) {\n"
             str += this.space[2] +  `${relation}`
@@ -101,7 +102,7 @@ export class AutoGenerator {
           str += this.space[1] + "}\n";
 
           /** Add relation */
-          const relation = this.createAssociations(false, tableName)
+          const relation = this.createAssociations(table)
 
           if (relation) {
             str += this.space[1] + "static associate(models) {\n"
@@ -199,13 +200,12 @@ export class AutoGenerator {
     return str;
   }
 
-  private createAssociations(typeScript: boolean, tableName: string) {
+  private createAssociations(tenantTableName: string) {
     let strBelongs = "";
     let strBelongsToMany = "";
+    const [rels] = this.relationTable.filter(a => a.table === tenantTableName)
 
-    const rels = this.relations.filter(a => a.childModel === tableName)
-
-    rels.forEach(rel => {
+    rels?.relations.forEach(rel => {
 
       let as = null
 

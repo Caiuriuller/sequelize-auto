@@ -44,6 +44,11 @@ export interface IndexSpec {
 
 }
 
+export interface RelationTable{
+  table: string;
+  relations: Relation[];
+}
+
 /** Relationship between two models, based on foreign keys */
 export interface Relation {
   /** name of parent table, e.g. customers */
@@ -81,6 +86,7 @@ export class TableData {
   indexes: { [tableName: string]: IndexSpec[]; };
   /** Relations between models, computed from foreign keys */
   relations: Relation[];
+  relationTable: RelationTable[];
   /** Text to be written to the model files, indexed by schemaName.tableName */
   text?: { [name: string]: string; };
   constructor() {
@@ -89,6 +95,7 @@ export class TableData {
     this.indexes = {};
     this.hasTriggerTables = {};
     this.relations = [];
+    this.relationTable = [];
   }
 }
 

@@ -49,8 +49,8 @@ export class SequelizeAuto {
 
   async run(): Promise<TableData> {
     let td = await this.build();
-    td = this.relate(td);
-    const tt = this.generate(td);
+    td = this.relate(td); //Gera a propriedade chamada relations.
+    const tt = this.generate(td); //Escreve as relation no metodo dentro da classe da model.
     td.text = tt;
     await this.write(td);
     return td;
