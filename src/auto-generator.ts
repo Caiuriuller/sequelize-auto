@@ -204,6 +204,10 @@ export class AutoGenerator {
     let strBelongs = "";
     let strBelongsToMany = "";
     const [rels] = this.relationTable.filter(a => a.table === tenantTableName)
+    
+    if (tenantTableName === 'produtos_representadas' || tenantTableName === 'caracteristicas_produtos') {
+      console.log(rels)
+    }
 
     rels?.relations.forEach(rel => {
 
@@ -213,8 +217,8 @@ export class AutoGenerator {
         return
       }
 
-      if (["Usuario", "Cliente", "Segmento", "EmpresaRepresentante", "PessoaContato", "PedidoProduto"].includes(rel.parentModel)) {
-        as = rel.parentId.split('_').filter(r => r != "id").map(r => recase(this.options.caseModel, r)).join()
+      if (["Usuario", "Cliente", "Segmento", "EmpresaRepresentante", "PessoaContato", "PedidoProduto", "ProdutoRepresentada"].includes(rel.parentModel)) {
+        as = rel.parentId.split('_').filter(r => r != "id").map(r => recase(this.options.caseModel, r)).join('')
       }
 
       if (rel.isM2M) {
