@@ -205,10 +205,6 @@ export class AutoGenerator {
     let strBelongsToMany = "";
     const [rels] = this.relationTable.filter(a => a.table === tenantTableName)
     
-    if (tenantTableName === 'produtos_representadas' || tenantTableName === 'caracteristicas_produtos') {
-      console.log(rels)
-    }
-
     rels?.relations.forEach(rel => {
 
       let as = null
@@ -218,7 +214,7 @@ export class AutoGenerator {
       }
 
       if (["Usuario", "Cliente", "Segmento", "EmpresaRepresentante", "PessoaContato", "PedidoProduto", "ProdutoRepresentada"].includes(rel.parentModel)) {
-        as = rel.parentId.split('_').filter(r => r != "id").map(r => recase(this.options.caseModel, r)).join('')
+        as = rel.parentId.split('_').filter(r => r != "id").map(r => recase(this.options.caseModel, r, true)).join('')
       }
 
       if (rel.isM2M) {
@@ -491,7 +487,7 @@ export class AutoGenerator {
     let val = null;
     let typematch = null;
 
-    if (type === "boolean" || type === "bit(1)" || type === "bit" || type === "tinyint(1)") {
+    if (type === "boolean" || type === "bit(1)" || type === "bit") {
       val = 'DataTypes.BOOLEAN';
 
     // postgres range types
